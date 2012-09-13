@@ -1,0 +1,24 @@
+<?php
+// $Id$
+
+/**
+ * @file
+ * The install/uninstall functions for pdfcrowd module
+ */
+
+/**
+ * Implementation of hook_uninstall().
+ */
+function pdfcrowd_uninstall() {
+  // Remove any cached images.
+  $path = file_directory_path() .'/pdfcrowd/';
+  if (is_dir($path)) {
+    _pdfcrowd_recursive_delete($path);
+  }
+
+  // Remove module variables.
+  $result = db_query("SELECT name FROM {variable} WHERE name LIKE 'pdfcrowd_%'");
+  while ($var_name = db_result($result)) {
+    variable_del($var_name);
+  }
+}

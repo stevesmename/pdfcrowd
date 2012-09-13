@@ -1,0 +1,4 @@
+; $Id$
+name = Pdfcrowd API
+description = The Pdfcrowd online API is a professional solution that lets you create PDF from web pages and raw HTML code in your applications. This module is to be installed only if it is required by another module.
+core = 6.x

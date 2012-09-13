@@ -1,0 +1,230 @@
+<?php 
+// $Id$
+
+/**
+ * Author: Steve Douglas (stevesmename)
+ * Website: http://stevesme.name
+ * 
+ * @file
+ * This file contains the API functions for pdfcrowd.com services.
+ * 
+ */
+
+/**
+ * Implementation of hook_menu().
+ */
+function pdfcrowd_menu() {
+  $items['admin/settings/pdfcrowd'] = array(
+    'title' => 'Pdfcrowd Configuration',
+    'description' => 'Manage Pdfcrowd API Settings.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('pdfcrowd_admin_settings'),
+    'access arguments' => array('administer pdfcrowd'),
+    'type' => MENU_NORMAL_ITEM,
+    'file' => 'pdfcrowd.admin.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function pdfcrowd_perm() {
+  $perms = array();
+  $perms[] = 'administer pdfcrowd';
+  return $perms;
+}
+
+/**
+ * Include and initialize Pdfcrowd's PHP SDK.
+ */
+function _pdfcrowd_init($settings = NULL) {
+  module_load_include('php', 'pdfcrowd');
+  $client = new Pdfcrowd(variable_get('pdfcrowd_username',''), variable_get('pdfcrowd_apikey',''));
+
+  if (is_array($settings)) {
+    $params = _pdfcrowd_getparams();
+    foreach ($params as $param) {
+	  if (isset($settings[$param])) {
+        switch ($param) {
+		  case "setInitialPdfZoomType":
+		    $client->$param(Pdfcrowd::$settings[$param]);
+		  case "setPageLayout":
+		    $client->$param(Pdfcrowd::$settings[$param]);
+		  case "setPageMode":
+		    $client->$param(Pdfcrowd::$settings[$param]);
+		  default:
+		    $client->$param($settings[$param]);
+		}
+      }
+    }
+  }
+  
+  return $client;
+}
+
+function pdfcrowd_api_converthtml($html, $params = NULL) {
+  try {
+    $client = _pdfcrowd_init($params);
+	if ($params['savepdf']) {
+	  $params['filelocation'] = isset($params['filelocation']) ? $params['filelocation'] : _pdfcrowd_dir . '/';
+  	  $params['filename'] = isset($params['filename']) ? $params['filename'] : md5(time()).'.pdf';
+	  
+      $pdf = $client->convertHtml($html, fopen($params['filelocation'] . $params['filename'], 'wb'));
+	}
+	else {
+	  $pdf = $client->convertHtml($html);
+	}
+  }
+  catch(PdfcrowdException $e) {
+    watchdog('pdfcrowd', 'pdfcrowd_api_converthtml: %message',
+              array('%message' => $e->getMessage()), WATCHDOG_ERROR);
+    return;
+  }
+  
+  return $pdf;
+}
+
+function pdfcrowd_api_convertfile($file, $params = NULL) {
+  try {
+    $client = _pdfcrowd_init($params);
+    $pdf = $client->convertFile($file);
+  }
+  catch(PdfcrowdException $e) {
+    watchdog('pdfcrowd', 'pdfcrowd_api_convertfile: %message',
+              array('%message' => $e->getMessage()), WATCHDOG_ERROR);
+    return;
+  }
+  
+  return $pdf;
+}
+
+function pdfcrowd_api_converturi($uri, $params = NULL) {
+  try {
+    $client = _pdfcrowd_init($params);
+    $pdf = $client->convertURI($uri); 
+  }
+  catch(PdfcrowdException $e) {
+    watchdog('pdfcrowd', 'pdfcrowd_api_converturi: %message',
+              array('%message' => $e->getMessage()), WATCHDOG_ERROR);
+    return;
+  } 
+
+  return $pdf;
+}
+
+/**
+ * Returns the number of tokens available. 
+ *
+ */
+function pdfcrowd_api_numtokens() {
+  $tokens = 0;
+  
+  try {
+    $client = _pdfcrowd_init();
+    $tokens = $client->numTokens();
+  }
+  catch (PdfcrowdException $e) {
+    watchdog('pdfcrowd', 'pdfcrowd_api_numtokens: %message',
+              array('%message' => $e->getMessage()), WATCHDOG_ERROR);
+  }  
+  
+  return $tokens;
+}
+
+/**
+ * Returns parameters available to utilize. See the README.txt file
+ * for additional info about the parameters.
+ *
+ */
+function pdfcrowd_api_getparams() {
+  $params = _pdfcrowd_getparams();
+  $params[] = 'savepdf';
+  $params[] = 'savepdf';
+  
+  return $params;
+}
+
+/**
+ * Get default paramaters that can be passed via the Pdfcrowd API.
+ *
+ * Note this is intended for internal module use only.
+ */
+function _pdfcrowd_getparams() {
+  $params = array(
+    'useSSL',
+    'setPageWidth',
+    'setPageHeight',
+    'setHorizontalMargin',
+    'setVerticalMargin',
+    'setEncrypted',
+    'setUserPassword',
+    'setOwnerPassword',
+    'setNoPrint',
+    'setNoModify',
+    'setNoCopy',
+    'setPageLayout',
+    'setPageMode',
+    'setFooterText',
+    'setFooterHtml',
+    'setFooterUrl',
+    'setHeaderHtml',
+    'setHeaderUrl',
+    'enableImages',
+    'enableBackgrounds',
+    'setHtmlZoom',
+    'enableJavaScript',
+    'enableHyperlinks',
+    'setDefaultTextEncoding',
+    'usePrintMedia',
+    'setMaxPages',
+    'enablePdfcrowdLogo',
+    'setInitialPdfZoomType',
+    'setInitialPdfExactZoom',
+    'setPdfScalingFactor',
+    'setPageBackgroundColor',
+    'setAuthor',
+    'setFailOnNon200',
+  );
+
+  return $params;
+}
+
+/**
+ * Recursively delete all files and folders in the specified filepath, then
+ * delete the containing folder.
+ *
+ * Note that this only deletes visible files with write permission.
+ *
+ * @param string $path
+ *   A filepath relative to file_directory_path.
+ */
+function _pdfcrowd_recursive_delete($path) {
+  if (is_file($path) || is_link($path)) {
+    unlink($path);
+  }
+  elseif (is_dir($path)) {
+    $d = dir($path);
+    while (($entry = $d->read()) !== FALSE) {
+      if ($entry == '.' || $entry == '..') continue;
+      $entry_path = $path .'/'. $entry;
+      _pdfcrowd_recursive_delete($entry_path);
+    }
+    $d->close();
+    rmdir($path);
+  }
+  else {
+    watchdog('pdfcrowd', 'Unknown file type(%path) stat: %stat ',
+              array('%path' => $path,  '%stat' => print_r(stat($path),1)), WATCHDOG_ERROR);
+  }
+}
+
+/**
+ * Get default location of pdf files from pdfcrowd module.
+ */
+function _pdfcrowd_dir() {
+  $path = file_create_path('pdfcrowd');
+  file_check_directory($path, FILE_CREATE_DIRECTORY);
+  return $path;
+}
